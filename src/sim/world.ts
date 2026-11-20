@@ -135,6 +135,9 @@ export class World {
         created: 0, died: -1,
       };
       n.leader = this.makeLeader(n, 0, true);
+      // every world is slightly different: personalities and ambitions vary per seed
+      n.leader.hawk = clamp(n.leader.hawk + this.rng.normal(0, 0.07), 0.02, 0.98);
+      n.ambition = clamp(n.ambition + this.rng.normal(0, 0.05), 0, 1);
       if (gov === 'fdem' || gov === 'dem' || gov === 'hyb') n.pol.nextElection = this.rng.int(60, 365 * 4);
       if (s.code === 'UA') { n.mil.mobLevel = 3; n.mil.mobilized = 0; n.pol.rally = 10; n.pol.weariness = 45; n.eco.growth = 2; n.mil.experience = 0.85; n.mil.morale = 0.55; n.mil.readiness = 0.95; }
       if (s.code === 'RU') { n.mil.mobLevel = 2; n.mil.mobilized = 250; n.pol.weariness = 30; n.mil.experience = 0.8; n.mil.readiness = 0.9; }
@@ -195,11 +198,12 @@ export class World {
           const ta = list.reduce((s, p) => s + p.area, 0) || 1;
           for (const p of list) p.oil = p.area / ta;
         }
+        for (const p of list) p.oil *= n.eco.oilProd; // absolute Mb/d per region
       }
       n.stats.startArea = list.reduce((s, p) => s + p.area, 0);
     }
     for (const p of this.provinces) {
-      p.strategic = 1 + (p.capital ? 2 : 0) + (p.oil > 0.1 ? 1 : 0) + (p.urban > 1e6 ? 0.6 : 0) + (p.coast ? 0.2 : 0);
+      p.strategic = 1 + (p.capital ? 2 : 0) + (p.oil > 0.15 ? 1 : 0) + (p.urban > 1e6 ? 0.6 : 0) + (p.coast ? 0.2 : 0);
     }
   }
 
@@ -331,7 +335,8 @@ export class World {
       n.ownedCount = this.ownList[n.id].length;
       n.occupiedByEnemy = this.ownList[n.id].filter((i) => this.provinces[i].ctrl !== n.id).length;
       let cores = 0, lost = 0;
-      for (const p of this.provinces) if (p.core === n.id) { cores += p.pop + 0.01; if (p.ctrl !== n.id) lost += p.pop + 0.01; }
+      // occupied homeland hurts fully; land formally ceded long ago weighs less
+      for (const p of this.provinces) if (p.core === n.id) { cores += p.pop + 0.01; if (p.ctrl !== n.id) lost += (p.pop + 0.01) * (p.owner === n.id ? 1 : this.day - p.ownedSince > 3650 ? 0.1 : 0.35); }
       n.coreLostFrac = cores ? lost / cores : 0;
       n.stats.peakArea = Math.max(n.stats.peakArea, n.area);
     }

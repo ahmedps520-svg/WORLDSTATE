@@ -20,7 +20,7 @@ let WORLD_GDP0 = 0;
 
 export function initMarket(w: World) {
   OIL_BASE = w.nations.reduce((s, n) => s + n.eco.oilProd, 0);
-  FOOD_BASE = w.nations.reduce((s, n) => s + Math.max(0, n.eco.food - 1) * Math.sqrt(n.eco.gdp), 0);
+  FOOD_BASE = w.nations.reduce((s, n) => s + Math.max(0, n.eco.food - 1) * Math.sqrt(n.stats.startGdp || n.eco.gdp), 0);
   WORLD_GDP0 = w.nations.reduce((s, n) => s + n.eco.gdp, 0);
   for (const c of CHOKEPOINTS) w.market.chokepoints[c.id] = { open: 1, by: -1 };
   for (const n of w.nations) n.eco.reserves = Math.max(n.eco.reserves, n.eco.gdp * 0.08);
@@ -61,19 +61,18 @@ export function updateMarket(w: World) {
   }
   // oil supply: producing provinces under owner control and undamaged
   let supply = 0;
-  for (const n of w.nations) {
-    if (!n.alive && n.eco.oilProd === 0) continue;
-    if (n.eco.oilProd <= 0) continue;
-    let f = 0;
-    for (const pid of w.ownList[n.id] || []) {
-      const p = P[pid];
-      if (p.oil <= 0) continue;
-      f += p.oil * (p.ctrl === p.owner ? 1 : 0.3) * (1 - p.devast * 0.85) * (1 - p.battle * 0.6);
-    }
-    // conquered fields produce for the occupier at reduced rate (counted above as 0.3)
-    const sanc = n.eco.sanctions;
-    supply += n.eco.oilProd * f * (1 - sanc * 0.12);
+  const prod = new Float64Array(w.nations.length);
+  for (const p of P) {
+    if (p.oil <= 0) continue;
+    // fields produce for whoever holds them; occupied fields run at reduced output
+    const out = p.oil * (p.ctrl === p.owner ? 1 : 0.35) * (1 - p.devast * 0.85) * (1 - p.battle * 0.6);
+    prod[p.ctrl] += out;
+    supply += out * (1 - w.nations[p.ctrl].eco.sanctions * 0.12);
   }
+  for (const n of w.nations) n.eco.oilProd = prod[n.id];
+  // producers invest when prices are high and let fields decline when they are low
+  const capRate = clamp(0.004 + 0.012 * (w.market.oil - 72) / 72, -0.015, 0.04) / 52;
+  for (const p of P) if (p.oil > 0 && p.ctrl === p.owner && p.battle < 0.05) p.oil *= 1 + capRate;
   supply *= 1 - oilLoss;
   const wg = worldGdp(w);
   const demand = OIL_BASE * Math.pow(wg / WORLD_GDP0, 0.45);
@@ -87,7 +86,7 @@ export function updateMarket(w: World) {
     if (n.eco.food <= 1) continue;
     let ok = 0, tot = 0;
     for (const pid of w.ownList[n.id] || []) { const p = P[pid]; tot += p.area; if (p.ctrl === p.owner) ok += p.area * (1 - p.devast * 0.7) * (1 - p.battle * 0.5); }
-    fsup += (n.eco.food - 1) * Math.sqrt(n.eco.gdp) * (tot ? ok / tot : 1) * (1 - n.eco.blockade * 0.6);
+    fsup += (n.eco.food - 1) * Math.sqrt(n.stats.startGdp || 50) * (tot ? ok / tot : 1) * (1 - n.eco.blockade * 0.6);
   }
   fsup *= 1 - foodLoss * 1.5;
   const fTarget = clamp(100 * Math.pow(FOOD_BASE / Math.max(1, fsup), 2.2) * (1 + (w.market.oil - 74) / 600), 60, 400);

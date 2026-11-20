@@ -32,7 +32,7 @@ export const TREATIES: [string, string, 'defense' | 'nap' | 'partnership', numbe
   ['US', 'JP', 'defense', 0.85], ['US', 'KR', 'defense', 0.85], ['US', 'PH', 'defense', 0.65], ['US', 'AU', 'defense', 0.75],
   ['US', 'NZ', 'defense', 0.5], ['AU', 'NZ', 'defense', 0.7], ['US', 'TW', 'defense', 0.5], ['US', 'IL', 'defense', 0.6],
   ['CN', 'KP', 'defense', 0.55], ['RU', 'KP', 'defense', 0.6], ['SA', 'PK', 'defense', 0.55], ['TR', 'AZ', 'defense', 0.65],
-  ['FR', 'GR', 'defense', 0.55], ['RU', 'IR', 'partnership', 0], ['CN', 'PK', 'partnership', 0], ['CN', 'RU', 'partnership', 0],
+  ['FR', 'GR', 'defense', 0.55], ['US', 'XK', 'defense', 0.4], ['US', 'GY', 'defense', 0.35], ['IT', 'XK', 'defense', 0.3], ['RU', 'IR', 'partnership', 0], ['CN', 'PK', 'partnership', 0], ['CN', 'RU', 'partnership', 0],
   ['US', 'SA', 'partnership', 0], ['IN', 'US', 'partnership', 0], ['IN', 'RU', 'partnership', 0], ['US', 'SG', 'partnership', 0],
   ['GB', 'UA', 'partnership', 0], ['US', 'UA', 'partnership', 0], ['FR', 'UA', 'partnership', 0], ['DE', 'UA', 'partnership', 0],
   ['RU', 'VE', 'partnership', 0], ['CU', 'VE', 'partnership', 0], ['IR', 'YE', 'partnership', 0], ['US', 'QA', 'partnership', 0],

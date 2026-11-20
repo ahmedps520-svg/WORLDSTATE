@@ -9,15 +9,11 @@ export const TERRAIN_MOVE: Record<string, number> = { plains: 1, forest: 0.8, hi
 export const TERRAIN_SUPPLY: Record<string, number> = { plains: 1, forest: 1.2, hills: 1.3, mountains: 1.7, desert: 1.5, jungle: 1.7, arctic: 2.1, urban: 0.9 };
 
 // baseline stocks per nation captured at start so production is calibrated to real inventories
-const BASE = new WeakMap<Nation, { armor: number; artillery: number; aircraft: number; navy: number; ad: number; active: number; budget: number; missiles: number }>();
-
-export function baseline(n: Nation) {
-  let b = BASE.get(n);
-  if (!b) {
-    b = { armor: n.mil.armor, artillery: n.mil.artillery, aircraft: n.mil.aircraft, navy: n.mil.navy, ad: n.mil.airDefense, active: n.mil.active, budget: Math.max(0.05, n.eco.gdp * n.eco.milPct / 100), missiles: n.mil.missiles };
-    BASE.set(n, b);
-  }
-  return b;
+type Base = { armor: number; artillery: number; aircraft: number; navy: number; ad: number; active: number; budget: number; missiles: number };
+export function baseline(n: Nation): Base {
+  const h = n as Nation & { _base?: Base };
+  if (!h._base) h._base = { armor: n.mil.armor, artillery: n.mil.artillery, aircraft: n.mil.aircraft, navy: n.mil.navy, ad: n.mil.airDefense, active: n.mil.active, budget: Math.max(0.05, n.eco.gdp * n.eco.milPct / 100), missiles: n.mil.missiles };
+  return h._base;
 }
 
 export function perSoldierQuality(n: Nation) {

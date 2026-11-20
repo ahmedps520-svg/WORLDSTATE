@@ -40,7 +40,7 @@ function disaster(w: World, alive: Nation[]) {
   let deaths = 0, title = '', imp = 2, gdpHit = 0;
   if (kind === 'q') {
     const mag = (5.8 + sev * 2.4).toFixed(1);
-    deaths = Math.round(Math.pow(sev, 2.5) * p.pop * 8000 * poor * (QUAKE_REGIONS.includes(n.code) ? 1 : 0.5));
+    deaths = Math.round(Math.pow(sev, 3) * Math.min(p.pop, 6) * 2500 * poor * (QUAKE_REGIONS.includes(n.code) ? 1 : 0.4));
     title = `Magnitude ${mag} earthquake strikes near ${p.name}, ${n.short}`;
     gdpHit = sev * 0.04;
   } else if (kind === 's') {
@@ -160,7 +160,7 @@ function techEvent(w: World, alive: Nation[]) {
     // commodity discovery
     const provs = (w.ctrlList[n.id] || []).map((i) => w.provinces[i]);
     const p = w.rng.pick(provs); if (!p) return;
-    n.eco.oilProd += 0.2 + w.rng.next() * 0.5; p.oil += 0.3;
+    p.oil += 0.15 + w.rng.next() * 0.4;
     w.pushNews('economy', 3, `Major oil field discovered near ${p.name}, ${n.short}`, undefined, [n.id], p.id);
   }
 }

@@ -327,8 +327,11 @@ export class MapRenderer {
           g.clip(c.path[lod]);
           if (flag) {
             const bw = c.bbox[2] - c.bbox[0], bh = c.bbox[3] - c.bbox[1];
-            const s = Math.max(bw / 4, bh / 3);
-            const fw = s * 4, fh = s * 3;
+            // cover-fit, allowing the flag to stretch up to ~1.9x so very wide or tall
+            // territories still show the whole design rather than one band
+            const asp = Math.max(4 / 3 / 1.9, Math.min(4 / 3 * 1.9, bw / Math.max(1e-6, bh)));
+            const s = Math.max(bw / asp, bh);
+            const fw = s * asp, fh = s;
             g.drawImage(flag, (c.bbox[0] + c.bbox[2]) / 2 - fw / 2, (c.bbox[1] + c.bbox[3]) / 2 - fh / 2, fw, fh);
             // cloth shading: soft vignette towards the territory edge
             const cx = (c.bbox[0] + c.bbox[2]) / 2, cy = (c.bbox[1] + c.bbox[3]) / 2;

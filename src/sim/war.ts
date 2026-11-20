@@ -119,7 +119,8 @@ export function joinWar(w: World, war: War, nid: number, s: 'a' | 'd', silent = 
   w.rebuildWarIndex();
   const total = war.a.members.length + war.d.members.length;
   if (!silent) w.pushNews('war', 4, `${n.short} enters the ${war.name} on the side of ${w.nations[S.leader].short}`, undefined, [nid, S.leader, O.leader], w.nations[nid].capital, war.id);
-  if (total >= 7 && !war.name.startsWith('Great') && war.type !== 'civil') {
+  const majors = [...war.a.members, ...war.d.members].filter((m) => w.nations[m].eco.gdp > 1200 || w.nations[m].power > 3000).length;
+  if (total >= 7 && majors >= 3 && !war.name.startsWith('Great') && war.type !== 'civil' && war.type !== 'punitive') {
     const old = war.name;
     war.name = `Great ${regionAdj(w, war)} War`;
     w.pushNews('war', 5, `${old} escalates into the ${war.name}`, `${total} nations are now belligerents.`, [war.a.leader, war.d.leader], undefined, war.id);
@@ -173,7 +174,7 @@ export function callToArms(w: World, war: War, s: 'a' | 'd') {
 function globalReaction(w: World, war: War) {
   const a = war.a.leader, d = war.d.leader;
   const A = w.nations[a];
-  const aggression = war.goal === undefined ? 1 : war.a.goal === 'regime' || war.a.goal === 'annex' ? 1.2 : war.a.goal === 'claims' ? 0.8 : war.a.goal === 'liberate' ? 0.3 : 0.7;
+  const aggression = war.a.goal === 'regime' || war.a.goal === 'annex' ? 1.2 : war.a.goal === 'claims' ? 0.8 : war.a.goal === 'liberate' ? 0.3 : 0.7;
   let sanctioners: number[] = [];
   for (const n of w.nations) {
     if (!n.alive || war.a.members.includes(n.id) || war.d.members.includes(n.id) || n.faction) continue;
@@ -545,7 +546,7 @@ function updateExhaustion(w: World, war: War) {
     const rebel = !!L.faction;
     const fromTime = Math.min(rebel ? 15 : 35, days / (defending ? 70 : 40) * (dem ? 1.3 : 0.8) * (rebel ? 0.3 : 1));
     const floor = (war as War & { _exFloor?: { a: number; d: number } })._exFloor?.[s] ?? 0;
-    const eco = clamp(-L.eco.growth * 2, 0, 20) + L.eco.inflation / 10;
+    const eco = (clamp(-L.eco.growth * 2, 0, 20) + L.eco.inflation / 10) * (defending ? 0.5 : 1);
     const target = clamp(floor + fromCas * 0.65 + fromTime + eco - L.pol.rally * 0.5, 0, 100);
     S.exhaustion += (target - S.exhaustion) * 0.03;
     for (const m of S.members) {
@@ -683,7 +684,7 @@ function peaceCheck(w: World, war: War) {
   if (goalsMet && war.type !== 'civil') {
     const accept = (war.d.exhaustion > 62 && war.score > 30) || war.d.exhaustion > 78 || D.pol.stability < 22 || w.rng.chance(0.01 + war.peaceAttempts * 0.004);
     war.peaceAttempts++;
-    if (accept) return endWar(w, war, 'a', 'cede_targets');
+    if (accept && w.rng.chance(0.35)) return endWar(w, war, 'a', w.rng.chance(0.5) ? 'ceasefire' : 'cede_targets');
     if (war.peaceAttempts === 1) w.pushNews('diplomacy', 3, `${D.short} rejects ${A.short}'s terms for peace`, `${A.short} demanded formal cession of occupied territory.`, [D.id, A.id], undefined, war.id);
   }
   // exhausted attacker
@@ -701,8 +702,13 @@ function peaceCheck(w: World, war: War) {
   }
   // exhausted defender with significant losses
   if (war.d.exhaustion > 75 && war.score > 30 && war.type !== 'civil' && w.rng.chance(0.3)) {
+    if (war.type !== 'independence' && war.a.goal !== 'regime' && w.rng.chance(0.55)) return endWar(w, war, 'a', 'ceasefire');
     return endWar(w, war, 'a', war.type === 'independence' ? 'independence' : war.a.goal === 'regime' ? 'puppet' : 'cede_occupied');
   }
+  // phony war: no way to reach each other
+  const fc = CACHE.get(war.id);
+  if (fc && fc.frontline.length === 0 && days > 120 && w.rng.chance(0.25)) return endWar(w, war, 'a', war.score > 5 ? 'ceasefire' : 'white');
+  if (days > 240 && war.a.casualties + war.d.casualties < 2 && war.type !== 'punitive' && w.rng.chance(0.3)) return endWar(w, war, 'a', 'white');
   // stalemate
   if (war.stalemateDays > 160 && war.a.exhaustion > 35 && war.d.exhaustion > 30) {
     const pr = 0.03 + (war.a.exhaustion + war.d.exhaustion) / 1500 + (mediator(w, war) >= 0 ? 0.04 : 0);

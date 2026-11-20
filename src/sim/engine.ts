@@ -58,7 +58,7 @@ export class Sim {
         : ((f.select.lonLt === undefined || p.lon < f.select.lonLt) && (f.select.latGt === undefined || p.lat > f.select.latGt) && (f.select.lonGt === undefined || p.lon > f.select.lonGt))));
       if (!provs.length) continue;
       const backers = f.backers.map((c) => w.byCode.get(c)!).filter((x) => x !== undefined);
-      const fac = spawnNation(w, parent, provs.map((p) => p.id), 'insurgent', false, { name: f.name, short: f.short, colors: f.colors, backers, strength: f.id === 'RSF' ? 0.5 : f.id === 'NUG' ? 0.42 : 0.3 });
+      const fac = spawnNation(w, parent, provs.map((p) => p.id), 'insurgent', false, { name: f.name, short: f.short, colors: f.colors, backers, strength: (f.id === 'RSF' ? 0.5 : f.id === 'NUG' ? 0.42 : 0.3) * this.w.rng.range(0.75, 1.45) });
       if (fac) {
         const fw = w.wars.find((x) => x.a.leader === fac.id && x.status === 'active');
         if (fw) { fw.start = -this.w.rng.int(400, 1200); fw.name = `${parent.short} Civil War`; }

@@ -68,6 +68,8 @@ export function politicsDaily(w: World, n: Nation) {
   if (!n.faction && pol.coupRisk > 0.05 && w.rng.chance(pol.coupRisk * 0.0012 * ev)) coup(w, n);
   // revolution / regime collapse
   if (pol.stability < 14 && pol.unrest > 70 && !n.faction && w.rng.chance(0.0018 * ev)) revolution(w, n);
+  // armed insurgencies in fragile states
+  if (pol.stability < 24 && !n.faction && !n.atWar.length && n.gov !== 'fdem' && (w.ctrlList[n.id] || []).length > 3 && w.rng.chance(0.00035 * ev)) startCivilWar(w, n, 'insurgent', 'years of state failure and a jihadist-separatist insurgency'.split(' and ')[w.rng.int(0, 1)]);
   // mass protests
   if (pol.unrest > 55 && w.rng.chance(0.0012 * ev * (pol.unrest / 60))) {
     const p = n.capital >= 0 ? n.capital : undefined;
@@ -140,7 +142,7 @@ export function coup(w: World, n: Nation, forced = false) {
 
 export function revolution(w: World, n: Nation) {
   // collapse may produce a new order or a civil war
-  if (w.rng.chance(0.45)) { startCivilWar(w, n, 'insurgent', 'revolution'); return; }
+  if (w.rng.chance(n.gov === 'fdem' || n.gov === 'dem' ? 0.12 : 0.35)) { startCivilWar(w, n, 'insurgent', 'revolution'); return; }
   const prev = n.gov;
   const wasAutocracy = ['auth', 'one', 'mon', 'jun', 'theo'].includes(prev);
   n.gov = wasAutocracy ? (w.rng.chance(0.55) ? 'tran' : 'hyb') : w.rng.chance(0.5) ? 'auth' : 'tran';
@@ -243,6 +245,9 @@ export function spawnNation(w: World, parent: Nation, provs: number[], kind: 'se
       created: w.day, died: -1, successorOf: parent.id, nukes: 0, capital: main.id, atWar: [],
       stats: { casualties: 0, civilian: 0, warsStarted: 0, warsWon: 0, warsLost: 0, provincesGained: 0, provincesLost: 0, peakArea: 0, startArea: 0, startGdp: 0, startPop: 0 },
     } as Nation;
+    const fresh = n as Nation & { _base?: unknown; _ind0?: unknown };
+    fresh._base = undefined;
+    fresh._ind0 = undefined;
     w.nations.push(n);
     w.byCode.set(n.code, id);
   }
@@ -256,7 +261,7 @@ export function spawnNation(w: World, parent: Nation, provs: number[], kind: 'se
   m.armor = pm.armor * defect * 0.8; m.artillery = pm.artillery * defect * 0.8; m.aircraft = pm.aircraft * defect * 0.25; m.navy = pm.navy * defect * 0.2;
   m.airDefense = pm.airDefense * defect * 0.3; m.missiles = pm.missiles * defect * 0.1; m.morale = 0.7; m.readiness = 0.8; m.losses = 0; m.lossesEquip = 0; m.aidReceived = 0;
   if (!peaceful) { pm.active -= m.active; pm.armor -= m.armor; pm.artillery -= m.artillery; pm.aircraft -= m.aircraft; }
-  n.eco = { ...parent.eco, debt: 40, reserves: 1, sanctions: 0, blockade: 0, milTarget: peaceful ? 2 : 8, milPct: peaceful ? 2 : 8, oilProd: parent.eco.oilProd * provs.reduce((s, i) => s + P[i].oil, 0) };
+  n.eco = { ...parent.eco, debt: 40, reserves: 1, sanctions: 0, blockade: 0, milTarget: peaceful ? 2 : 8, milPct: peaceful ? 2 : 8, oilProd: provs.reduce((s, i) => s + P[i].oil, 0) };
   n.pol = { ...parent.pol, stability: 50, legitimacy: 50, rally: 15, weariness: 0, nextElection: 0, refugees: 0, crisis: 0, lastRegimeChange: w.day };
   w.west[n.id] = w.west[parent.id] * -0.3 + w.rng.normal(0, 0.3);
   for (const o of w.nations) { if (o.id === n.id) continue; w.setRel(n.id, o.id, w.getRel(parent.id, o.id) * -0.4); w.relBase[n.id * MAX_NATIONS + o.id] = w.relBase[o.id * MAX_NATIONS + n.id] = w.getRel(n.id, o.id); }

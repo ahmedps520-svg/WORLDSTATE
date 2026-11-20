@@ -205,7 +205,8 @@ function joinOngoingWars(w: World, n: Nation) {
       const losing = s === 'a' ? war.score > 25 : war.score < -25;
       if (claims && losing && re < -30) p += 0.06 * n.leader.hawk * w.settings.aggression;
       // ideological intervention: great powers backing friends who are losing badly
-      if (rf > 65 && re < -55 && (s === 'a' ? war.score < -40 : war.score > 40) && n.power > enemy.power * 0.8 && n.leader.hawk > 0.55) p += 0.05 * w.settings.aggression;
+      const bloc = n.power + w.defensePartners(n.id).reduce((t, x) => t + w.nations[x.id].power * x.c * 0.4, 0);
+      if (rf > 55 && re < -50 && (s === 'a' ? war.score < -40 : war.score > 40) && bloc > enemy.power * 0.8 && n.leader.hawk > 0.5) p += 0.04 * w.settings.aggression;
       if (enemy.nukes > 0 && n.nukes === 0) p *= 0.3;
       if (O.members.some((m) => w.getRel(n.id, m) > 30)) p *= 0.2;
       if (p > 0 && w.rng.chance(p)) {
@@ -248,13 +249,17 @@ export function evaluateTargets(w: World, n: Nation, land: Set<number>, sea: Set
     const help = allyHelp(w, t, n);
     const myHelp = w.defensePartners(n.id).reduce((s, p) => s + w.nations[p.id].power * p.c * 0.25, 0);
     let ratio = (n.power + myHelp) / Math.max(5, estimate(w, n, t) + help);
-    if (!land.has(id)) ratio *= 0.35 + 0.35 * Math.min(1, n.navalPower / Math.max(1, t.navalPower * 3)); // amphibious operations are hard
+    if (!land.has(id)) {
+      // amphibious operations are hard: the target's navy and its allies' fleets stand in the way
+      const navD = t.navalPower + w.defensePartners(t.id).reduce((s, p) => s + w.nations[p.id].navalPower * p.c * projection(w.nations[p.id]), 0);
+      ratio *= 0.3 + 0.35 * Math.min(1, n.navalPower / Math.max(1, navD * 2.5));
+    }
     const claims = [...n.claims].filter((p) => w.provinces[p].ctrl === id);
     const claimValue = claims.reduce((s, p) => s + w.provinces[p].value, 0);
     const tValue = (w.ctrlList[id] || []).reduce((s, p) => s + w.provinces[p].value, 0) || 1;
     let d = n.ambition * 30 + n.leader.hawk * 25;
     d += Math.min(28, claims.length ? 12 + 30 * claimValue / tValue : 0);
-    d += Math.max(0, -rel) * 0.3;
+    d += Math.max(0, -rel) * 0.35;
     if (t.atWar.length) d += 12;
     if (t.pol.stability < 30) d += 10;
     if (n.pol.stability < 35 && ['auth', 'jun', 'one', 'theo'].includes(n.gov)) d += 8;
@@ -265,13 +270,14 @@ export function evaluateTargets(w: World, n: Nation, land: Set<number>, sea: Set
     d -= Math.min(15, n.eco.tradeOpen * 8) + (w.west[id] > 0.5 && n.eco.gdp < 3000 ? 8 : 0);
     if (n.atWar.length) d -= 25;
     if (rel > 0) d -= rel * 0.6;
-    d -= 16; // international norms
+    d -= 10; // international norms
     d *= w.settings.aggression;
     const adjacent = land.has(id);
     let type: WarType = 'invasion', goal: WarGoal = 'annex';
     if (!adjacent && !sea.has(id)) { type = 'punitive'; goal = 'punish'; }
     else if (claims.length && (ratio < 3.5 || n.leader.pragmatism > 0.5)) { type = 'border'; goal = 'claims'; }
     else if (w.west[n.id] * w.west[id] < -0.2 && ratio > 3) { type = 'invasion'; goal = 'regime'; }
+    if (type === 'punitive') { d += 12; if (n.gov === 'fdem' || n.gov === 'dem') d += 10; } // stand-off strikes are cheap
     const need = type === 'border' ? 1.25 : type === 'punitive' ? 1.6 : 2.2;
     if (ratio < need) d -= (need - ratio) * 40;
     out.push({ target: id, desire: d, type, goal, ratio });
@@ -303,7 +309,7 @@ function warPlanning(w: World, n: Nation, land: Set<number>, sea: Set<number>) {
   if ((w.day + n.id * 13) % 60 > 30) return;
   const plans = evaluateTargets(w, n, land, sea);
   const best = plans[0];
-  if (!best || best.desire < 55) return;
+  if (!best || best.desire < 50 + w.rng.next() * 14) return;
   // start a crisis: troops mass at the border
   n.ai.buildup = 1; n.ai.buildupTarget = best.target;
   if (n.mil.mobLevel < 2) n.mil.mobLevel = best.type === 'punitive' ? 1 : 2;

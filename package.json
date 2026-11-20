@@ -2,9 +2,12 @@
   "name": "worldstate",
   "version": "1.0.0",
   "description": "",
-  "main": "index.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview",
+    "build:world": "node --max-old-space-size=8000 scripts/build-world.mjs",
+    "headless": "tsx scripts/headless.ts"
   },
   "repository": {
     "type": "git",
@@ -44,5 +47,7 @@
     "typescript": "5.6",
     "vite": "^5.4.21",
     "world-atlas": "^2.0.2"
-  }
+  },
+  "private": true,
+  "type": "module"
 }
