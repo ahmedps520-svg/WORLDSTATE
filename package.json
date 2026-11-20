@@ -1,0 +1,48 @@
+{
+  "name": "worldstate",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ahmedps520-svg/WORLDSTATE.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/ahmedps520-svg/WORLDSTATE/issues"
+  },
+  "homepage": "https://github.com/ahmedps520-svg/WORLDSTATE#readme",
+  "dependencies": {
+    "d3-geo": "^3.1.2",
+    "d3-geo-projection": "^4.0.0",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "topojson-client": "^3.1.0"
+  },
+  "devDependencies": {
+    "@types/d3-geo": "^3.1.1",
+    "@types/geojson": "^7946.0.16",
+    "@types/react": "^18.3.31",
+    "@types/react-dom": "^18.3.7",
+    "@types/topojson-client": "^3.1.5",
+    "@types/topojson-simplify": "^3.0.3",
+    "@types/topojson-specification": "^1.0.5",
+    "@vitejs/plugin-react": "^4.7.0",
+    "all-the-cities": "^3.1.0",
+    "d3-delaunay": "^6.0.6",
+    "flag-icons": "^7.6.0",
+    "i18n-iso-countries": "^7.14.0",
+    "polygon-clipping": "^0.15.7",
+    "topojson-server": "^3.0.1",
+    "topojson-simplify": "^3.0.3",
+    "tsx": "^4.23.15",
+    "typescript": "5.6",
+    "vite": "^5.4.21",
+    "world-atlas": "^2.0.2"
+  }
+}
