@@ -149,7 +149,7 @@ export function callToArms(w: World, war: War, s: 'a' | 'd') {
     if (n.faction) continue;
     const rel = w.getRel(pr.id, leader);
     let pJoin = pr.c * (rel + 100) / 170;
-    if (s === 'a') pJoin *= 0.25 + n.leader.hawk * 0.4; // offensive wars rarely trigger treaties
+    if (s === 'a') pJoin *= war.type === 'punitive' ? 0 : 0.25 + n.leader.hawk * 0.4; // offensive wars rarely trigger treaties
     if (O.members.some((o) => w.nations[o].nukes > 0) && n.nukes === 0) pJoin *= 0.55;
     if (O.members.some((o) => w.getRel(pr.id, o) > 30)) pJoin *= 0.4;
     pJoin *= 1 - n.pol.weariness / 140;
@@ -414,7 +414,7 @@ function combat(w: World, war: War, fc: FrontCache) {
     q.devast = clamp(q.devast + 0.0008 * Math.min(3, E / 60), 0, 1);
     // civilians
     const dens = q.pop / Math.max(1, q.area / 10000);
-    const civ = Math.min(q.pop * 0.0002, E * 0.00002 * (0.5 + dens) * (q.urban > 1e6 ? 2 : 1));
+    const civ = Math.min(q.pop * 0.00002, E * 0.000004 * (0.5 + Math.min(4, dens)) * (q.urban > 1e6 ? 1.6 : 1));
     q.pop = Math.max(0.001, q.pop - civ);
     war.civilian += civ * 1000;
     w.nations[q.owner].stats.civilian += civ * 1000;

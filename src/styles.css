@@ -309,8 +309,9 @@ input[type=range] { width: 100%; accent-color: var(--accent); }
   .modes { max-width: calc(100vw - 100px); }
 }
 @media (max-width: 760px) {
-  .topbar { grid-template-columns: 1fr auto; height: auto; padding: 8px 10px; gap: 6px; }
-  .brand-sub, .indicators, .speed-label, .speed-dots, .date-sub { display: none; }
+  .topbar { grid-template-columns: auto 1fr; height: auto; padding: 8px 10px; gap: 8px; }
+  .brand > div, .indicators, .speed-label, .speed-dots, .date-sub { display: none; }
+  .clock { justify-content: flex-end; }
   .date { min-width: 0; } .date-main { font-size: 14px; }
   .clock { gap: 8px; }
   .rail { top: auto; bottom: 10px; left: 10px; right: 10px; width: auto; flex-direction: row; justify-content: space-around; z-index: 11; }
@@ -318,7 +319,7 @@ input[type=range] { width: 100%; accent-color: var(--accent); }
   .drawer, .inspector { left: 6px; right: 6px; width: auto; top: auto; bottom: 84px; height: 62vh; }
   .inspector { z-index: 10; }
   .feed { left: 10px; right: 10px; width: auto; bottom: 84px; }
-  .modes { bottom: 130px; right: 10px; max-width: calc(100vw - 20px); }
+  .modes { bottom: 134px; right: 10px; max-width: calc(100vw - 20px); }
   .legend { display: none; }
   .zoom { display: none; }
   .war-builder { grid-template-columns: 1fr; }

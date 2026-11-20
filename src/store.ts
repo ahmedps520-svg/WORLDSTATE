@@ -43,7 +43,7 @@ type Listener = () => void;
 class Store {
   s: UIState = {
     speed: 2, paused: true, mapMode: 'flags', panel: null, selection: null, hover: -1, tool: null, warDialog: null, search: false,
-    replay: null, newsFilter: 'all', feedOpen: true, skipping: null, tick: 0, toasts: [], follow: false, showArrows: true, showLabels: true,
+    replay: null, newsFilter: 'all', feedOpen: typeof window === 'undefined' || window.innerWidth > 760, skipping: null, tick: 0, toasts: [], follow: false, showArrows: true, showLabels: true,
   };
   private ls = new Set<Listener>();
   get = () => this.s;

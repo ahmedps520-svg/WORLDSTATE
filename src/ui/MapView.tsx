@@ -6,6 +6,7 @@ import { onFlagsLoaded } from '../map/flags';
 import { attachRenderer } from '../loop';
 import { Flag } from './common';
 import { fmtPop } from './format';
+import { fmtDate } from '../sim/calendar';
 
 let geoCache: Geo | null = null;
 
@@ -124,7 +125,7 @@ export function MapView() {
           {tool?.kind === 'transfer' && <div className="tip-row amber">Click to give to {w.nations[tool.to].short}</div>}
         </div>
       )}
-      {replay !== null && <div className="replay-banner">Viewing history — {new Date(Date.UTC(2026, 10, 19 + (w.snapshots[replay]?.day || 0))).toUTCString().slice(5, 16)} <button onClick={() => store.set({ replay: null })}>Return to live</button></div>}
+      {replay !== null && <div className="replay-banner">Viewing history — {fmtDate(w.snapshots[replay]?.day || 0)} <button onClick={() => store.set({ replay: null })}>Return to live</button></div>}
     </div>
   );
 }

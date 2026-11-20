@@ -9,6 +9,17 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet" />
     <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Ccircle cx='16' cy='16' r='13' fill='%230b1622' stroke='%23f2b84b' stroke-width='2'/%3E%3Ccircle cx='22' cy='11' r='3' fill='%23ff5a47'/%3E%3C/svg%3E" />
+    <style>
+      html, body { margin: 0; background: #060d16; color: #e6ecf4; font-family: Inter, system-ui, sans-serif; }
+      #boot { position: fixed; inset: 0; z-index: 100; display: grid; place-items: center; background: radial-gradient(circle at 50% 45%, #10233a, #04080f 70%); transition: opacity .6s, visibility .6s; }
+      #boot.done { opacity: 0; visibility: hidden; }
+      .boot-inner { text-align: center; }
+      .boot-logo { font-weight: 800; letter-spacing: .5em; font-size: 28px; margin-left: .5em; }
+      #boot-status { color: #8796ab; margin: 14px 0; font-size: 12px; font-family: ui-monospace, monospace; }
+      .boot-bar { width: 220px; height: 2px; background: rgba(255,255,255,.08); margin: 0 auto; overflow: hidden; border-radius: 2px; }
+      .boot-bar div { width: 40%; height: 100%; background: #f2b84b; animation: boot 1.1s ease-in-out infinite; }
+      @keyframes boot { from { transform: translateX(-100%); } to { transform: translateX(260%); } }
+    </style>
   </head>
   <body>
     <div id="boot"><div class="boot-inner"><div class="boot-logo">WORLDSTATE</div><div id="boot-status">Initialising…</div><div class="boot-bar"><div></div></div></div></div>

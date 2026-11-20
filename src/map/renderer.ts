@@ -67,11 +67,19 @@ export class MapRenderer {
     this.W = w; this.H = h;
     for (const c of [this.base, this.over]) { c.width = Math.round(w * this.dpr); c.height = Math.round(h * this.dpr); c.style.width = w + 'px'; c.style.height = h + 'px'; }
     this.minK = Math.min(w / this.geo.width, h / this.geo.height) * 0.92;
+    if (h > w * 1.1) this.minK = Math.min(this.minK, (h * 0.3) / this.geo.height);
     if (this.view.k < this.minK || this.view.k === 1) this.fit();
     this.clamp();
     this.dirty = true;
   }
   fit() {
+    if (this.H > this.W * 1.1) {
+      // portrait: fill the height and centre on Eurasia/Africa rather than shrinking the whole planet
+      const k = (this.H * 0.62) / this.geo.height;
+      const [cx] = this.geo.project(25, 20);
+      this.view = { k, x: this.W / 2 - cx * k, y: (this.H - this.geo.height * k) / 2 - this.H * 0.04 };
+      return;
+    }
     const k = Math.max(this.minK, Math.min(this.W / this.geo.width, this.H / this.geo.height) * 1.02);
     this.view = { k, x: (this.W - this.geo.width * k) / 2, y: (this.H - this.geo.height * k) / 2 + 10 };
   }
@@ -450,7 +458,7 @@ export class MapRenderer {
     // flip transitions: old owner fades out
     this.transitions = this.transitions.filter((t) => now - t.t0 < 1400);
     for (const t of this.transitions) {
-      const a = 1 - (now - t.t0) / 1400;
+      const a = Math.max(0, Math.min(1, 1 - (now - t.t0) / 1400));
       const gp = this.geo.prov[t.p];
       g.save(); g.globalAlpha = a * 0.85; g.clip(gp.path[lod]);
       const n = w.nations[t.from];
@@ -501,7 +509,7 @@ export class MapRenderer {
     // pings
     this.pings = this.pings.filter((p) => now - p.t0 < 1800);
     for (const p of this.pings) {
-      const t = (now - p.t0) / 1800;
+      const t = Math.max(0, Math.min(1, (now - p.t0) / 1800));
       const [x, y] = this.toScreen(p.x, p.y);
       g.beginPath(); g.arc(x, y, (p.big ? 10 : 5) + t * (p.big ? 60 : 26), 0, Math.PI * 2);
       g.strokeStyle = hexA(p.color, (1 - t) * 0.9); g.lineWidth = p.big ? 2.5 : 1.6; g.stroke();

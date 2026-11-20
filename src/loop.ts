@@ -54,7 +54,7 @@ function flushNews(now: number) {
     if (renderer && n.loc && n.imp >= (fast ? 5 : 3)) renderer.ping(n.loc[0], n.loc[1], n.cat === 'war' || n.cat === 'battle' ? '#ff6a4d' : n.cat === 'disaster' ? '#ffcf5a' : n.cat === 'politics' ? '#c58bff' : '#6fb8ff', n.imp >= 4);
     if (n.imp >= 5 && !st.skipping && SPEEDS[st.speed].dps <= 30) toasts.push({ id: toastSeq++, title: n.title, body: n.body, cat: n.cat, at: now, nid: n.nations[0], prov: n.prov, war: n.war });
   }
-  store.set({ toasts: toasts.slice(-3) });
+  store.set({ toasts: toasts.slice(-2) });
 }
 
 export function skipDays(days: number) {

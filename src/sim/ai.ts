@@ -246,6 +246,8 @@ export function evaluateTargets(w: World, n: Nation, land: Set<number>, sea: Set
     const t = w.nations[id];
     if (!t.alive || t.faction || w.isEnemy(n.id, id) || w.areAllied(n.id, id)) continue;
     const rel = w.getRel(n.id, id);
+    // distant targets must actually matter: a real rival, not a micro-state
+    if (!land.has(id) && !sea.has(id) && (rel > -65 || (t.eco.gdp < 60 && t.power < n.power * 0.04))) continue;
     const help = allyHelp(w, t, n);
     const myHelp = w.defensePartners(n.id).reduce((s, p) => s + w.nations[p.id].power * p.c * 0.25, 0);
     let ratio = (n.power + myHelp) / Math.max(5, estimate(w, n, t) + help);
