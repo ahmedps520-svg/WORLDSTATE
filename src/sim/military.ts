@@ -67,7 +67,9 @@ export function militaryTick(w: World, n: Nation) {
   // mobilisation
   const mobTarget = mobilisationTarget(n);
   const dm = mobTarget - m.mobilized;
-  m.mobilized += dm * (dm > 0 ? 0.012 : 0.02);
+  // reserve armies (Finland, Israel, Korea, Taiwan...) call up within days once the homeland is attacked
+  const homeAttacked = atWar && n.occupiedByEnemy > 0;
+  m.mobilized += dm * (dm > 0 ? (atWar ? (homeAttacked || m.reserves > m.active ? 0.06 : 0.025) : 0.012) : 0.02);
   if (m.mobilized < 0) m.mobilized = 0;
   // readiness / training
   const rTarget = atWar ? 0.95 : 0.45 + 0.12 * m.mobLevel + 0.15 * m.training;
@@ -116,6 +118,7 @@ export function computeSupply(w: World, nid: number, friendly: (c: number) => bo
   const sorted = own.filter((i) => P[i].owner === nid || P[i].core === nid).sort((a, b) => P[b].gdp - P[a].gdp);
   for (const i of sorted.slice(0, 3)) if (!hubs.includes(i)) hubs.push(i);
   if (!hubs.length && own.length) hubs.push(own[0]);
+  for (const [pid, by] of w.beachheads) if (by === nid && P[pid].ctrl === nid && !hubs.includes(pid)) hubs.push(pid);
   // foreign bases: any friendly nation's capital that is land connected acts as a depot for expeditionary forces
   const q: number[] = [];
   for (const h of hubs) { hops[h] = 0; q.push(h); }

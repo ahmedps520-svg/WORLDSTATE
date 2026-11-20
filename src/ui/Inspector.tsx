@@ -361,7 +361,7 @@ function ProvincePanel({ id }: { id: number }) {
   const p = w.provinces[id];
   const C = w.nations[p.ctrl], O = w.nations[p.owner], K = w.nations[p.core];
   const claimants = w.nations.filter((n) => n.alive && n.claims.has(id) && n.id !== p.owner);
-  const wars = w.wars.filter((x) => x.status === 'active' && frontCache(x.id)?.frontline.includes(id));
+  const wars = w.wars.filter((x) => x.status === 'active' && frontCache(x)?.frontline.includes(id));
   return (
     <div className="nation">
       <div className="n-head">
@@ -416,7 +416,7 @@ function ProvincePanel({ id }: { id: number }) {
 function WarPanel({ war }: { war: War }) {
   const sim = app.sim!; const w = sim.w;
   if (!war) return null;
-  const fc = frontCache(war.id);
+  const fc = frontCache(war);
   const air = (war as War & { _air?: { a: number; d: number } })._air;
   const recent = war.flips.slice(-12).reverse();
   const side = (s: 'a' | 'd') => {
@@ -441,10 +441,29 @@ function WarPanel({ war }: { war: War }) {
         <div className="muted small">{war.type.toUpperCase()} · began {fmtDate(war.start)}{war.end ? ` · ended ${fmtDate(war.end)}` : ''}</div>
         <h2>{war.name}</h2>
         <div className="muted">{war.casusBelli}</div>
-        <div className="chips"><span className={`tag ${war.status === 'active' ? 'red' : war.status === 'ceasefire' ? 'amber' : 'gray'}`}>{war.status}</span>{war.nuclear && <span className="tag violet">nuclear use</span>}{war.outcome && <span className="tag">{war.outcome}</span>}</div>
+        <div className="chips"><span className={`tag ${war.status === 'active' ? 'red' : war.status === 'ceasefire' ? 'amber' : 'gray'}`}>{war.status}</span>{war.nuclear && <span className="tag violet">{war.nukeCount || 1} nuclear strike{(war.nukeCount || 1) > 1 ? 's' : ''}</span>}{war.allowTreaty === false && war.allowCeasefire === false && war.status !== 'ended' && <span className="tag red">to the finish</span>}{war.outcome && <span className="tag">{war.outcome}</span>}</div>
       </div>
       <div className="score-wrap"><span>{w.nations[war.a.leader].short}</span><ScoreBar score={war.score} /><span>{w.nations[war.d.leader].short}</span></div>
       <div className="muted small center">War score {war.score >= 0 ? '+' : ''}{war.score.toFixed(0)} · {fmtDuration((war.end ?? w.day) - war.start)} · {fmtK(war.civilian)} civilian deaths</div>
+      {war.status === 'active' && (
+        <div className="war-actions">
+          <button className="btn warn" onClick={() => end('ceasefire', 'a')}>Ceasefire now</button>
+          <button className="btn" onClick={() => end('white', 'd')}>Stop the war (pre-war borders)</button>
+        </div>
+      )}
+      {war.status === 'ceasefire' && (
+        <div className="war-actions">
+          <button className="btn danger" onClick={() => sim.resumeWar(war.id)}>Resume fighting</button>
+          <button className="btn" onClick={() => end('white', 'd')}>Make peace (pre-war borders)</button>
+        </div>
+      )}
+      {war.status !== 'ended' && (
+        <div className="rule-row">
+          <label className="check"><input id={`wt-${war.id}`} type="checkbox" checked={war.allowTreaty !== false} onChange={(e) => sim.setWarRules(war.id, { allowTreaty: e.target.checked })} /> Peace treaty allowed</label>
+          <label className="check"><input id={`wc-${war.id}`} type="checkbox" checked={war.allowCeasefire !== false} onChange={(e) => sim.setWarRules(war.id, { allowCeasefire: e.target.checked })} /> Ceasefire allowed</label>
+          <label className="check"><input id={`wn-${war.id}`} type="checkbox" checked={!!war.nukesAllowed} onChange={(e) => sim.setWarRules(war.id, { nukesAllowed: e.target.checked })} /> Nuclear weapons authorised</label>
+        </div>
+      )}
       <div className="war-sides-grid">{side('a')}{side('d')}</div>
       {war.targets.length > 0 && <Section title="War aims"><div className="chip-row">{war.targets.slice(0, 20).map((p) => <button key={p} className="chip" onClick={() => select({ kind: 'province', id: p }, true)}><Flag n={w.nations[w.provinces[p].ctrl]} size={12} />{w.provinces[p].name}</button>)}</div></Section>}
       <Section title="Recent territorial changes">
@@ -454,8 +473,6 @@ function WarPanel({ war }: { war: War }) {
       {war.status !== 'ended' && (
         <Section title="Impose an outcome">
           <div className="btn-grid">
-            <button className="btn" onClick={() => end('ceasefire', 'a')}>Ceasefire on current lines</button>
-            <button className="btn" onClick={() => end('white', 'd')}>White peace</button>
             <button className="btn" onClick={() => end('cede_occupied', 'a')}>{w.nations[war.a.leader].short} keeps occupied land</button>
             <button className="btn" onClick={() => end('cede_occupied', 'd')}>{w.nations[war.d.leader].short} keeps occupied land</button>
             <button className="btn danger" onClick={() => end(war.type === 'civil' ? 'overthrow' : war.type === 'independence' ? 'independence' : 'annex', 'a')}>{w.nations[war.a.leader].short} total victory</button>

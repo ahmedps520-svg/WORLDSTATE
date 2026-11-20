@@ -256,6 +256,11 @@ export interface War {
   nuclear: boolean;
   initiatedByUser: boolean;
   casusBelli: string;
+  allowTreaty?: boolean;     // may end in a negotiated peace (cession / white peace)
+  allowCeasefire?: boolean;  // may end in a ceasefire
+  nukesAllowed?: boolean;    // nuclear weapons authorised for this war
+  nukeCount?: number;
+  userCeasefire?: boolean;   // ceasefire imposed by the player: holds until the player resumes the war
 }
 
 export type NewsCat = 'war' | 'battle' | 'diplomacy' | 'politics' | 'economy' | 'disaster' | 'alliance' | 'world';

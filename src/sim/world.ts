@@ -67,6 +67,9 @@ export class World {
   ownList: number[][] = [];
   flipped: { p: number; from: number; to: number; day: number }[] = [];
   enemy: Uint8Array; // war index: enemy[a*MAX+b] = 1 when at war
+  beachheads = new Map<number, number>(); // province -> nation that landed there (sea/air supplied)
+  flashes: { p: number; big: boolean }[] = []; // nuclear detonations for the renderer
+  nukeSites: { p: number; day: number; by: number }[] = [];
   topology: WorldData['topology'];
   timeline: { day: number; title: string; cat: NewsCat; nations: number[]; prov?: number; war?: number }[] = [];
   warStats = { started: 0, ended: 0, totalCasualties: 0 };
@@ -157,7 +160,7 @@ export class World {
       const p: Province = {
         id: i, name: r.n, feature: r.f, owner: nid, ctrl: nid, core: nid, core2: -1, lon: r.x, lat: r.y, cx: r.cx, cy: r.cy, area: r.a,
         pop: n.pop * r.w, gdp: 0, urban: r.u, terrain: r.t as Terrain, coast: !!r.co, capital: !!r.cap, dependency: r.d,
-        neighbors: nb[i], sea: [], fort: 0, devast: 0, unrest: 10, separatism: r.s, oil: 0, siege: 0, siegeBy: -1, supplied: true,
+        neighbors: nb[i], sea: [], fort: 0, devast: 0, unrest: 10, separatism: Math.min(60, r.s), oil: 0, siege: 0, siegeBy: -1, supplied: true,
         encircledDays: 0, occupiedSince: -1, ownedSince: -9999, battle: 0, lastFlip: -9999, strategic: 1, value: 1,
       };
       this.provinces.push(p);
@@ -348,6 +351,7 @@ export class World {
     const from = p.ctrl;
     if (from === to) return;
     p.ctrl = to;
+    if (this.beachheads.has(pid) && this.beachheads.get(pid) !== to) this.beachheads.delete(pid);
     p.siege = 0; p.siegeBy = -1;
     p.lastFlip = this.day;
     p.encircledDays = 0;

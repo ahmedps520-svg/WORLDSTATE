@@ -298,6 +298,11 @@ input[type=range] { width: 100%; accent-color: var(--accent); }
 .wb-types button { text-align: left; padding: 9px 10px; border-radius: 8px; border: 1px solid var(--line); background: var(--panel-2); display: flex; flex-direction: column; gap: 3px; }
 .wb-types button span { font-size: 11px; color: var(--muted); }
 .wb-types button.on { border-color: var(--red); background: rgba(255,90,71,.1); }
+.wb-rules { background: var(--panel-2); border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; display: flex; flex-direction: column; gap: 2px; }
+.wb-rules h5 { margin: 0 0 4px; font-size: 10.5px; text-transform: uppercase; letter-spacing: .14em; color: var(--dim); }
+.wb-rules .check span { margin-left: 2px; }
+.war-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin: 10px 0 4px; }
+.rule-row { display: flex; flex-wrap: wrap; gap: 6px; margin: 4px 0 2px; }
 .warn-box { padding: 8px 10px; border-radius: 8px; background: rgba(242,193,75,.07); border: 1px solid rgba(242,193,75,.3); font-size: 12px; display: flex; flex-direction: column; gap: 6px; }
 .search { width: min(560px, calc(100vw - 24px)); padding: 10px; display: flex; flex-direction: column; gap: 4px; background: rgba(10,16,26,.97); }
 .tool-banner { position: absolute; top: 80px; left: 50%; transform: translateX(-50%); z-index: 13; padding: 8px 10px 8px 16px; display: flex; gap: 10px; align-items: center; border-color: var(--accent); color: var(--accent); font-weight: 600; }

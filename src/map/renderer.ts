@@ -31,6 +31,8 @@ export class MapRenderer {
   fly: null | { from: { x: number; y: number; k: number }; to: { x: number; y: number; k: number }; t0: number; dur: number } = null;
   transitions: Transition[] = [];
   pings: Ping[] = [];
+  nukeFx: { x: number; y: number; t0: number; big: boolean }[] = [];
+  private flashIdx = 0;
   hatch: CanvasPattern | null = null;
   graticule: Path2D;
   sphere: Path2D;
@@ -288,6 +290,12 @@ export class MapRenderer {
   // ------------------------------------------------------------------ frame
   frame(now: number) {
     this.stepFly(now);
+    const fl = this.sim.w.flashes;
+    if (fl.length > this.flashIdx) {
+      for (let i = this.flashIdx; i < fl.length; i++) { const g = this.geo.prov[fl[i].p]; this.nukeFx.push({ x: g.cx, y: g.cy, t0: now, big: fl[i].big }); }
+      this.flashIdx = fl.length;
+    }
+    if (this.flashIdx > 200) { fl.splice(0, fl.length); this.flashIdx = 0; }
     this.syncTerritory(now);
     if (this.dirty) {
       // keep interaction smooth: full render at most every ~40ms when slow
@@ -506,6 +514,7 @@ export class MapRenderer {
     if (this.mode === 'relations' && this.selected?.kind === 'nation') this.drawRelationLines(g, now);
     if (this.showArrows && !this.replay) this.drawArrows(g, now);
     this.drawBattles(g, now);
+    this.drawNukes(g, now);
     // pings
     this.pings = this.pings.filter((p) => now - p.t0 < 1800);
     for (const p of this.pings) {
@@ -514,6 +523,43 @@ export class MapRenderer {
       g.beginPath(); g.arc(x, y, (p.big ? 10 : 5) + t * (p.big ? 60 : 26), 0, Math.PI * 2);
       g.strokeStyle = hexA(p.color, (1 - t) * 0.9); g.lineWidth = p.big ? 2.5 : 1.6; g.stroke();
     }
+  }
+
+  private drawNukes(g: CanvasRenderingContext2D, now: number) {
+    const w = this.sim.w; const k = this.view.k;
+    // lingering fallout zones (three years)
+    for (const s of w.nukeSites) {
+      if (w.day - s.day > 1095) continue;
+      const gp = this.geo.prov[s.p];
+      const [x, y] = this.toScreen(gp.cx, gp.cy);
+      if (x < -30 || y < -30 || x > this.W + 30 || y > this.H + 30) continue;
+      const r = Math.min(11, 5 + k * 0.6);
+      g.save(); g.translate(x, y);
+      g.beginPath(); g.arc(0, 0, r + 2, 0, Math.PI * 2); g.fillStyle = 'rgba(0,0,0,0.75)'; g.fill();
+      g.beginPath(); g.arc(0, 0, r, 0, Math.PI * 2); g.fillStyle = '#ffd400'; g.fill();
+      g.fillStyle = '#111';
+      for (let i = 0; i < 3; i++) { const a = -Math.PI / 2 + i * (Math.PI * 2 / 3); g.beginPath(); g.moveTo(0, 0); g.arc(0, 0, r * 0.85, a - 0.5, a + 0.5); g.closePath(); g.fill(); }
+      g.beginPath(); g.arc(0, 0, r * 0.2, 0, Math.PI * 2); g.fillStyle = '#ffd400'; g.fill();
+      g.beginPath(); g.arc(0, 0, r * 0.13, 0, Math.PI * 2); g.fillStyle = '#111'; g.fill();
+      g.restore();
+    }
+    // detonations: flash, fireball, shockwave
+    this.nukeFx = this.nukeFx.filter((f) => now - f.t0 < 4500);
+    for (const f of this.nukeFx) {
+      const t = Math.max(0, (now - f.t0) / 4500);
+      const [x, y] = this.toScreen(f.x, f.y);
+      const scale = (f.big ? 1.6 : 1) * Math.max(0.7, Math.min(2.2, k * 0.6));
+      if (t < 0.06) { g.fillStyle = `rgba(255,250,235,${(f.big ? 0.55 : 0.3) * (1 - t / 0.06)})`; g.fillRect(0, 0, this.W, this.H); }
+      const fr = (8 + 34 * Math.sqrt(Math.min(1, t * 3))) * scale;
+      const fb = g.createRadialGradient(x, y, 0, x, y, fr);
+      const a = Math.max(0, 1 - t * 1.1);
+      fb.addColorStop(0, `rgba(255,255,240,${a})`); fb.addColorStop(0.35, `rgba(255,190,80,${a * 0.95})`); fb.addColorStop(0.7, `rgba(230,70,30,${a * 0.7})`); fb.addColorStop(1, 'rgba(120,20,10,0)');
+      g.fillStyle = fb; g.beginPath(); g.arc(x, y, fr, 0, Math.PI * 2); g.fill();
+      const sr = (20 + 180 * t) * scale;
+      g.beginPath(); g.arc(x, y, sr, 0, Math.PI * 2); g.strokeStyle = `rgba(255,235,200,${(1 - t) * 0.8})`; g.lineWidth = 3 * (1 - t) + 1; g.stroke();
+      g.beginPath(); g.arc(x, y, sr * 0.7, 0, Math.PI * 2); g.strokeStyle = `rgba(255,140,60,${(1 - t) * 0.5})`; g.lineWidth = 1.5; g.stroke();
+    }
+    if (this.nukeFx.length) this.dirty = this.dirty || false;
   }
 
   ping(lon: number, lat: number, color = '#7cc4ff', big = true) {
@@ -543,7 +589,7 @@ export class MapRenderer {
     if (k < 0.5) return;
     for (const war of w.wars) {
       if (war.status !== 'active') continue;
-      const fc = frontCache(war.id); if (!fc) continue;
+      const fc = frontCache(war); if (!fc) continue;
       for (const qid of fc.axes) {
         const q = w.provinces[qid];
         if (q.siege < 4) continue;

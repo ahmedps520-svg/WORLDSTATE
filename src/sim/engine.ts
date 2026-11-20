@@ -118,17 +118,33 @@ export class Sim {
   }
 
   // ------------------------------------------------------------------ sandbox API
-  startWar(attackers: number[], defenders: number[], type: WarType, goal: WarGoal, callAllies: boolean) {
+  startWar(attackers: number[], defenders: number[], type: WarType, goal: WarGoal, callAllies: boolean, opts: { allowTreaty?: boolean; allowCeasefire?: boolean; nukes?: boolean } = {}) {
     const w = this.w;
-    const war = declareWar(w, attackers, defenders, { type, goal, callAllies, user: true });
+    const war = declareWar(w, attackers, defenders, { type, goal, callAllies, user: true, ...opts });
+    if (war && !war.initiatedByUser) { war.initiatedByUser = true; Object.assign(war, { allowTreaty: opts.allowTreaty !== false, allowCeasefire: opts.allowCeasefire !== false, nukesAllowed: !!opts.nukes }); }
     if (war) for (const m of attackers.slice(1)) joinWar(w, war, m, 'a', true);
     this.version++;
     return war;
   }
   forcePeace(warId: number, terms: PeaceTerms, winner: 'a' | 'd') {
     const war = this.w.wars.find((x) => x.id === warId); if (!war || war.status === 'ended') return;
-    if (war.status === 'ceasefire') { war.status = 'active'; this.w.rebuildWarIndex(); }
-    endWar(this.w, war, winner, terms); this.version++;
+    if (war.status === 'ceasefire') { if (terms === 'ceasefire') { war.userCeasefire = true; return; } war.status = 'active'; this.w.rebuildWarIndex(); }
+    endWar(this.w, war, winner, terms);
+    if (terms === 'ceasefire') war.userCeasefire = true;
+    for (const m of [...war.a.members, ...war.d.members]) this.w.nations[m].ai.lastWarEnd = this.w.day;
+    this.version++;
+  }
+  /** player resumes fighting after a ceasefire */
+  resumeWar(warId: number) {
+    const w = this.w; const war = w.wars.find((x) => x.id === warId); if (!war || war.status !== 'ceasefire') return;
+    war.status = 'active'; war.userCeasefire = false; war.stalemateDays = 0; war.initiatedByUser = true;
+    w.rebuildWarIndex();
+    w.pushNews('war', 5, `Fighting resumes in the ${war.name}`, undefined, [war.a.leader, war.d.leader], undefined, war.id);
+    this.version++;
+  }
+  setWarRules(warId: number, rules: { allowTreaty?: boolean; allowCeasefire?: boolean; nukesAllowed?: boolean }) {
+    const war = this.w.wars.find((x) => x.id === warId); if (!war) return;
+    Object.assign(war, rules); this.version++;
   }
   joinWar(warId: number, nid: number, side: 'a' | 'd') {
     const war = this.w.wars.find((x) => x.id === warId); if (!war) return;

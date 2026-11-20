@@ -15,6 +15,9 @@ export interface DeclareOpts {
   user?: boolean;
   casusBelli?: string;
   surprise?: boolean;
+  allowTreaty?: boolean;
+  allowCeasefire?: boolean;
+  nukes?: boolean;
 }
 
 function side(leader: number, members: number[], goal: WarGoal, day: number): WarSide {
@@ -64,6 +67,7 @@ export function declareWar(w: World, attackers: number[], defenders: number[], o
     start: w.day, status: 'active', score: 0, targets, maxDepth: opts.type === 'border' ? 1 : 99, stalemateDays: 0, lastChange: w.day,
     peaceAttempts: 0, civilian: 0, flips: [], airCampaign: opts.type === 'punitive' ? 1 : 0.35, nuclear: false, initiatedByUser: !!opts.user,
     casusBelli: opts.casusBelli || defaultCasusBelli(w, opts, a, d),
+    allowTreaty: opts.allowTreaty !== false, allowCeasefire: opts.allowCeasefire !== false, nukesAllowed: !!opts.nukes, nukeCount: 0,
   };
   w.wars.push(war);
   w.warStats.started++;
@@ -73,7 +77,7 @@ export function declareWar(w: World, attackers: number[], defenders: number[], o
     const n = w.nations[m];
     n.ai.buildup = 0; n.ai.target = -1;
     n.pol.rally += attackers.includes(m) ? 6 + n.pol.nationalism * 6 : 14;
-    if (n.mil.mobLevel < 2 && defenders.includes(m)) n.mil.mobLevel = 2;
+    if (n.mil.mobLevel < 2 && defenders.includes(m)) n.mil.mobLevel = n.mil.reserves > n.mil.active ? 3 : 2;
     if (n.mil.mobLevel < 1) n.mil.mobLevel = 1;
   }
   // surprise: unprepared defenders
@@ -201,8 +205,8 @@ function globalReaction(w: World, war: War) {
 
 // ------------------------------------------------------------------ daily war step
 interface FrontCache { day: number; force: Float32Array; side: Int8Array; supply: Map<number, Int16Array>; axes: Set<number>; stance: { a: boolean; d: boolean }; capHops: Int16Array | null; ratio: number; frontline: number[]; pressure: Float32Array }
-const CACHE = new Map<number, FrontCache>();
-export function frontCache(id: number) { return CACHE.get(id); }
+const CACHE = new WeakMap<War, FrontCache>(); // keyed by the war object so new worlds/saves never see stale fronts
+export function frontCache(war: War) { return CACHE.get(war); }
 
 export function sideOf(war: War, nid: number): 'a' | 'd' | null { return war.a.members.includes(nid) ? 'a' : war.d.members.includes(nid) ? 'd' : null; }
 
@@ -215,9 +219,10 @@ export function warTick(w: World) {
     if (!war.a.members.length || !war.d.members.length) { endWar(w, war, war.a.members.length ? 'a' : 'd', 'collapse'); continue; }
     if (!war.a.members.includes(war.a.leader)) war.a.leader = war.a.members[0];
     if (!war.d.members.includes(war.d.leader)) war.d.leader = war.d.members[0];
-    let fc = CACHE.get(war.id);
-    if (!fc || w.day - fc.day >= 3 || w.ctrlDirty) { fc = allocate(w, war, fc); CACHE.set(war.id, fc); }
+    let fc = CACHE.get(war);
+    if (!fc || w.day - fc.day >= 3 || w.ctrlDirty) { fc = allocate(w, war, fc); CACHE.set(war, fc); }
     combat(w, war, fc);
+    landings(w, war, fc);
     airWar(w, war, fc);
     updateExhaustion(w, war);
     updateScore(w, war);
@@ -272,6 +277,12 @@ function allocate(w: World, war: War, prev?: FrontCache): FrontCache {
     if (pow <= 0) continue;
     let own = frontline.filter((i) => P[i].ctrl === m && sideArr[i] === s);
     let factor = 1;
+    if (own.length && landed(war).has(m)) {
+      // forces holding a landing zone far from home: limited by sealift / airlift
+      const enemySide = s === 1 ? 2 : 1;
+      const homeTouches = (w.ctrlList[m] || []).some((i) => P[i].owner === m && P[i].neighbors.some((q) => sideArr[q] === enemySide));
+      if (!homeTouches) factor = 0.22 + 0.6 * projection(n);
+    }
     if (!own.length) {
       // expeditionary: deploy into allied frontline provinces
       const allyFront = frontline.filter((i) => sideArr[i] === s);
@@ -361,7 +372,7 @@ function combat(w: World, war: War, fc: FrontCache) {
     if (atkSide === 1 && war.type === 'border' && !war.targets.includes(qid) && q.owner !== war.a.leader) continue;
     // nuclear deterrence: limited advances into a nuclear power's heartland
     const qOwner = w.nations[q.owner];
-    if (qOwner.nukes > 0 && fc.side[qid] && q.core === q.owner && !w.settings.nukes) {
+    if (qOwner.nukes > 0 && fc.side[qid] && q.core === q.owner && !w.settings.nukes && !war.nukesAllowed && !war.initiatedByUser) {
       const atkNuke = war[atkKey].members.some((m) => w.nations[m].nukes > 0);
       if (q.owner !== war[atkKey].leader && (fc.capHops && fc.capHops[qid] >= 0 && fc.capHops[qid] < 4) && !atkNuke) continue;
     }
@@ -398,8 +409,9 @@ function combat(w: World, war: War, fc: FrontCache) {
     const r = O / Math.max(0.05, D);
     const move = TERRAIN_MOVE[q.terrain] * Math.pow(25000 / Math.max(2000, q.area), 0.25);
     let dP: number;
-    if (r > 1.15) dP = Math.min(40, 1.4 * Math.pow(r - 1.15, 1.6)) * move * (0.8 + 0.4 * w.rng.next());
-    else if (r > 0.9) dP = -0.3;
+    const push = atkSide === 1 && war.initiatedByUser ? 1.35 : 1;
+    if (r > 1.15) dP = Math.min(40, 0.36 + 1.4 * Math.pow(r - 1.15, 1.6)) * move * (0.8 + 0.4 * w.rng.next()) * push;
+    else if (r > 0.85) dP = (r - 0.85) * 1.2 * move * (0.3 + 1.4 * w.rng.next()) * push; // attritional grind
     else dP = -3 * (1 - r);
     if (q.siegeBy !== atkSide) { q.siege = 0; q.siegeBy = atkSide; }
     q.siege = clamp(q.siege + dP, 0, 120);
@@ -531,6 +543,71 @@ function airWar(w: World, war: War, fc: FrontCache) {
   void fc;
 }
 
+export function landed(war: War): Set<number> {
+  const x = war as War & { _landed?: Set<number> };
+  if (!x._landed) x._landed = new Set();
+  return x._landed;
+}
+
+/** Nations with no front against their enemy storm a coast (or drop airborne troops) to open one. */
+function landings(w: World, war: War, fc: FrontCache) {
+  if ((w.day + war.id) % 4 !== 0) return;
+  const P = w.provinces;
+  const x = war as War & { _landAt?: Record<number, number> };
+  if (!x._landAt) x._landAt = {};
+  for (const s of ['a', 'd'] as const) {
+    if (!fc.stance[s]) continue;
+    if (s === 'a' && war.type === 'punitive') continue;
+    const S = war[s], O = war[s === 'a' ? 'd' : 'a'];
+    const sideNum = s === 'a' ? 1 : 2;
+    const sideHasFront = fc.frontline.some((i) => fc.side[i] === sideNum);
+    for (const m of S.members) {
+      const n = w.nations[m];
+      if (n.landPower < 20) continue;
+      if (fc.frontline.some((i) => fc.side[i] === sideNum && P[i].ctrl === m)) continue;
+      if (sideHasFront && m !== S.leader) continue; // co-belligerents reinforce allied fronts instead
+      if (w.day - (x._landAt[m] ?? -999) < 18) continue;
+      x._landAt[m] = w.day;
+      const enemy: Province[] = [];
+      for (const o of O.members) for (const i of w.ctrlList[o] || []) enemy.push(P[i]);
+      if (!enemy.length) continue;
+      const coastal = enemy.filter((p) => p.coast && !p.capital);
+      const airborne = coastal.length === 0;
+      const pool = airborne ? enemy.filter((p) => !p.capital) : coastal;
+      const home = w.capitalLoc(m) || [0, 0];
+      const scored = pool.map((p) => ({ p, sc: p.value * 1.5 - (fc.force[p.id] || 0) / 60 - Math.hypot(p.lon - home[0], p.lat - home[1]) / 40 - TERRAIN_DEF[p.terrain] + w.rng.next() * 2 }))
+        .sort((a, b) => b.sc - a.sc);
+      const q = scored[0]?.p;
+      if (!q) continue;
+      const navS = S.members.reduce((t, k) => t + w.nations[k].navalPower * (0.3 + projection(w.nations[k])), 0);
+      const navO = O.members.reduce((t, k) => t + w.nations[k].navalPower * (0.3 + projection(w.nations[k])), 0);
+      const air = (war as War & { _air?: { a: number; d: number } })._air?.[s] ?? 0.4;
+      const exp = n.landPower * commitment(w, n, war, s) * (0.2 + 0.6 * projection(n));
+      const def = ((fc.force[q.id] || 0) + 1) * TERRAIN_DEF[q.terrain] * (1 + 0.17 * q.fort);
+      const control = airborne ? air : navS / Math.max(1, navS + navO);
+      const pr = clamp(0.1 + 0.45 * control + 0.3 * clamp(exp / (def * 2.5), 0, 1) - (airborne ? 0.08 : 0), 0.05, 0.88);
+      const A = w.nations[m], D = w.nations[q.ctrl];
+      if (w.rng.chance(pr)) {
+        const from = q.ctrl;
+        w.setControl(q.id, m, 'capture');
+        w.beachheads.set(q.id, m);
+        landed(war).add(m);
+        q.battle = 0.9;
+        war.flips.push({ day: w.day, p: q.id, from, to: m });
+        S.provincesTaken++;
+        war.lastChange = w.day;
+        applyLosses(w, war, m, exp * 0.03, 0.5, 0.5);
+        if (def > 0) applyLosses(w, war, from, Math.min(fc.force[q.id] || 0, exp * 0.02), 0.5, 0.5);
+        fc.day = -999; // re-plan the front around the new foothold
+        w.pushNews('battle', 4, airborne ? `${A.short} airborne forces seize ${q.name} in ${D.short}` : `${A.short} troops storm ashore at ${q.name}, opening a front in ${D.short}`, undefined, [m, from], q.id, war.id);
+      } else {
+        applyLosses(w, war, m, exp * 0.05, 0.5, 0.5);
+        if (w.rng.chance(0.5)) w.pushNews('battle', 3, airborne ? `${A.short} air assault on ${q.name} is beaten back` : `${D.short} repels ${A.short} landing at ${q.name}`, undefined, [m, q.ctrl], q.id, war.id);
+      }
+    }
+  }
+}
+
 function updateExhaustion(w: World, war: War) {
   for (const s of ['a', 'd'] as const) {
     const S = war[s];
@@ -589,6 +666,7 @@ function decideStance(w: World, war: War, fc: FrontCache) {
   const A = w.nations[war.a.leader], D = w.nations[war.d.leader];
   const goalsMet = war.targets.length > 0 && war.targets.every((p) => war.a.members.includes(P[p].ctrl));
   let aOff = war.type !== 'punitive' && war.a.exhaustion < 78 && A.mil.morale > 0.2 && ratio > 0.55;
+  if (war.initiatedByUser && war.type !== 'punitive' && war.a.exhaustion < 95) aOff = true; // the player ordered this offensive
   if ((war.type === 'border' || war.a.goal === 'claims') && goalsMet) aOff = false;
   let dOff = war.d.exhaustion < 85 && (1 / Math.max(0.01, ratio) > 1.05 || (D.occupiedByEnemy > 0 && 1 / ratio > 0.8 && D.mil.morale > 0.45));
   if (war.type === 'punitive') dOff = false;
@@ -624,35 +702,87 @@ function decideStance(w: World, war: War, fc: FrontCache) {
     }
   }
   // nuclear escalation (only when permitted)
-  if (w.settings.nukes) nuclearCheck(w, war);
+  nuclearCheck(w, war, fc);
 }
 
 function avg(f: Float32Array, idx: number[]) { if (!idx.length) return 1; let s = 0; for (const i of idx) s += f[i]; return s / idx.length; }
 
-function nuclearCheck(w: World, war: War) {
+function nuclearCheck(w: World, war: War, fc: FrontCache) {
+  if (!w.settings.nukes && !war.nukesAllowed) return;
+  const x = war as War & { _nukeLast?: number; _nukeRetal?: 'a' | 'd' };
+  const days = w.day - war.start;
   for (const s of ['a', 'd'] as const) {
     const S = war[s], O = war[s === 'a' ? 'd' : 'a'];
+    const shooter = S.members.map((m) => w.nations[m]).filter((n) => n.nukes > 0).sort((a, b) => b.nukes - a.nukes)[0];
+    if (!shooter) continue;
+    if (w.day - (x._nukeLast ?? -999) < 14) continue;
     const L = w.nations[S.leader];
-    if (L.nukes <= 0 || war.nuclear) continue;
-    const desperate = L.coreLostFrac > 0.3 || (L.capital >= 0 && w.provinces[L.capital].neighbors.some((q) => O.members.includes(w.provinces[q].ctrl)));
-    if (!desperate) continue;
-    if (!w.rng.chance(0.012 * L.leader.hawk * (1 - L.leader.pragmatism * 0.6))) continue;
-    // tactical strike on the most important enemy-held frontline province
-    const cands = w.provinces.filter((p) => O.members.includes(p.ctrl) && p.neighbors.some((q) => S.members.includes(w.provinces[q].ctrl)));
-    const t = cands.sort((a, b) => b.battle - a.battle)[0];
-    if (!t) continue;
-    war.nuclear = true;
-    L.nukes -= 1;
-    const dead = t.pop * 0.12;
-    t.pop -= dead; t.devast = 1; t.siege = 0;
-    war.civilian += dead * 1000;
-    const victim = w.nations[t.ctrl];
-    victim.mil.active *= 0.92; victim.mil.armor *= 0.9; victim.mil.morale *= 0.6;
-    for (const n of w.nations) if (n.alive && n.id !== L.id) w.addRel(n.id, L.id, -45);
-    w.market.globalCycle -= 2.5;
-    w.market.tension = 100;
-    w.pushNews('war', 5, `${L.short} detonates a tactical nuclear weapon near ${t.name}`, `The first wartime nuclear use since 1945 kills an estimated ${Math.round(dead * 1000)},000 people. World markets crash.`, [L.id, victim.id], t.id, war.id);
+    const myScore = s === 'a' ? war.score : -war.score;
+    const capThreat = L.capital >= 0 && w.provinces[L.capital].neighbors.some((q) => O.members.includes(w.provinces[q].ctrl));
+    const desperate = myScore < -10 || L.coreLostFrac > 0.1 || S.exhaustion > 55 || capThreat;
+    let p = 0;
+    if (x._nukeRetal === s) p = 0.55 + shooter.leader.hawk * 0.35; // retaliation is almost automatic
+    else if (desperate) p = 0.08 + 0.25 * shooter.leader.hawk;
+    else if (war.nukesAllowed && days > 14) p = 0.05 + 0.12 * shooter.leader.hawk; // authorised and willing to escalate
+    if (x._nukeRetal !== s) p /= 1 + (war.nukeCount ?? 0) * 1.5; // each detonation makes the next harder to order
+    if (!w.rng.chance(p)) continue;
+    const strategic = x._nukeRetal === s || (war.nukeCount ?? 0) >= 2;
+    fireNuke(w, war, fc, s, shooter, strategic);
+    x._nukeLast = w.day;
   }
+}
+
+function fireNuke(w: World, war: War, fc: FrontCache, s: 'a' | 'd', shooter: Nation, strategic: boolean) {
+  const S = war[s], O = war[s === 'a' ? 'd' : 'a'];
+  const x = war as War & { _nukeRetal?: 'a' | 'd' };
+  const P = w.provinces;
+  let t: Province | undefined;
+  if (strategic) {
+    // a city strike: the largest enemy-held urban centre
+    const hit = new Set(w.nukeSites.map((n) => n.p));
+    t = P.filter((p) => O.members.includes(p.ctrl) && !hit.has(p.id)).sort((a, b) => b.urban - a.urban || b.pop - a.pop)[0];
+  } else {
+    // a battlefield strike on the enemy's strongest frontline position
+    const front = fc.frontline.filter((i) => O.members.includes(P[i].ctrl) && P[i].neighbors.some((q) => S.members.includes(P[q].ctrl)));
+    const pick = (front.length ? front : fc.frontline.filter((i) => O.members.includes(P[i].ctrl))).sort((a, b) => fc.force[b] - fc.force[a])[0];
+    t = pick !== undefined ? P[pick] : P.filter((p) => O.members.includes(p.ctrl)).sort((a, b) => b.value - a.value)[0];
+  }
+  if (!t) return;
+  const victim = w.nations[t.ctrl];
+  shooter.nukes = Math.max(0, shooter.nukes - (strategic ? 3 : 1));
+  war.nuclear = true;
+  war.nukeCount = (war.nukeCount ?? 0) + 1;
+  const dead = Math.min(t.pop, strategic ? Math.max(t.urban / 1e6, t.pop * 0.3) : 2) * (strategic ? 0.25 : 0.03);
+  t.pop = Math.max(0.001, t.pop - dead);
+  t.devast = 1; t.fort = 0; t.battle = 1;
+  if (strategic) { t.gdp *= 0.4; victim.pol.stability -= 22; victim.eco.cycle -= 3; victim.eco.industry = Math.max(0.15, victim.eco.industry - 0.12); }
+  for (const q of t.neighbors) P[q].devast = clamp(P[q].devast + 0.18, 0, 1);
+  war.civilian += dead * 1000;
+  victim.stats.civilian += dead * 1000;
+  // forces in the blast zone are annihilated
+  const lost = (fc.force[t.id] || 0) * (strategic ? 0.4 : 0.85);
+  if (lost > 0) applyLosses(w, war, victim.id, lost, 0.5, 0.5);
+  fc.force[t.id] *= 0.15;
+  victim.mil.morale = clamp(victim.mil.morale * 0.7, 0.05, 1);
+  O.exhaustion = clamp(O.exhaustion + (strategic ? 28 : 12), 0, 100);
+  // an adjacent attacker can exploit the gap
+  if (!strategic && t.neighbors.some((q) => S.members.includes(P[q].ctrl))) { t.siegeBy = s === 'a' ? 1 : 2; t.siege = Math.max(t.siege, 85); }
+  // the world reacts
+  for (const n of w.nations) if (n.alive && n.id !== shooter.id && !S.members.includes(n.id)) w.addRel(n.id, shooter.id, strategic ? -50 : -35);
+  w.market.globalCycle -= strategic ? 4 : 2;
+  w.market.tension = 100;
+  w.market.oil *= strategic ? 1.25 : 1.1;
+  // a first strike invites retaliation; a retaliatory strike does not automatically trigger another
+  if (x._nukeRetal === s) x._nukeRetal = undefined;
+  else if (O.members.some((m) => w.nations[m].nukes > 0)) x._nukeRetal = s === 'a' ? 'd' : 'a';
+  w.flashes.push({ p: t.id, big: strategic });
+  w.nukeSites.push({ p: t.id, day: w.day, by: shooter.id });
+  const first = w.wars.filter((ww) => ww.nuclear).length === 1 && war.nukeCount === 1;
+  const toll = Math.round(dead * 1000).toLocaleString();
+  w.pushNews('war', 5,
+    strategic ? `${shooter.short} launches a nuclear strike on ${t.name}` : `${shooter.short} detonates a tactical nuclear weapon near ${t.name}`,
+    `${first ? 'The first wartime nuclear use since 1945. ' : ''}An estimated ${toll},000 people are dead${strategic ? ` and ${victim.short}'s government is in shock` : `; ${victim.short}'s front line is shattered`}. Markets crash worldwide.`,
+    [shooter.id, victim.id], t.id, war.id);
 }
 
 // ------------------------------------------------------------------ peace
@@ -668,54 +798,70 @@ function peaceCheck(w: World, war: War) {
   const aCapFallen = A.capital >= 0 && war.d.members.includes(P[A.capital].ctrl);
   const goalsMet = war.targets.length > 0 && war.targets.every((p) => war.a.members.includes(P[p].ctrl));
 
+  const allowT = war.allowTreaty !== false;
   // total collapse of defender
   if ((capFallen && dOcc > 0.55 && (D.pol.stability < 35 || war.d.exhaustion > 55)) || D.provinceCount === 0) {
-    if (war.type === 'civil') return endWar(w, war, 'a', A.faction?.kind === 'separatist' ? 'independence' : 'overthrow');
-    if (war.type === 'independence') return endWar(w, war, 'a', 'independence');
+    if (war.type === 'civil') return settle(w, war, 'a', A.faction?.kind === 'separatist' ? 'independence' : 'overthrow');
+    if (war.type === 'independence') return settle(w, war, 'a', 'independence');
     const terms: PeaceTerms = war.a.goal === 'annex' || dOcc > 0.92 ? (A.leader.hawk > 0.55 || dOcc > 0.92 ? 'annex' : 'puppet') : war.a.goal === 'regime' ? 'puppet' : 'cede_occupied';
-    return endWar(w, war, 'a', terms);
+    return settle(w, war, 'a', terms);
   }
   const aOcc = A.ownedCount ? A.occupiedByEnemy / A.ownedCount : 0;
   if ((aCapFallen && aOcc > 0.55 && war.a.exhaustion > 50) || A.provinceCount === 0) {
-    if (war.type === 'civil' || war.type === 'independence') return endWar(w, war, 'd', 'collapse');
-    return endWar(w, war, 'd', 'white');
+    if (war.type === 'civil' || war.type === 'independence') return settle(w, war, 'd', 'collapse');
+    if (!allowT) { if (A.provinceCount === 0 || aOcc > 0.85) return endWar(w, war, 'd', 'annex'); return; }
+    return settle(w, war, 'd', 'white');
   }
   // attackers achieved limited goals
   if (goalsMet && war.type !== 'civil') {
     const accept = (war.d.exhaustion > 62 && war.score > 30) || war.d.exhaustion > 78 || D.pol.stability < 22 || w.rng.chance(0.01 + war.peaceAttempts * 0.004);
     war.peaceAttempts++;
-    if (accept && w.rng.chance(0.35)) return endWar(w, war, 'a', w.rng.chance(0.5) ? 'ceasefire' : 'cede_targets');
+    if (accept && w.rng.chance(0.35)) return settle(w, war, 'a', w.rng.chance(0.5) ? 'ceasefire' : 'cede_targets');
     if (war.peaceAttempts === 1) w.pushNews('diplomacy', 3, `${D.short} rejects ${A.short}'s terms for peace`, `${A.short} demanded formal cession of occupied territory.`, [D.id, A.id], undefined, war.id);
   }
   // exhausted attacker
   if (war.a.exhaustion > 72 && war.score < 25) {
     if (war.type === 'civil' || war.type === 'independence') {
       const fac = w.nations[war.a.leader];
-      if (fac.provinceCount <= 1 && w.rng.chance(0.3)) return endWar(w, war, 'd', 'collapse');
-      if (war.d.exhaustion > 45 && w.rng.chance(0.1)) return endWar(w, war, 'd', 'ceasefire');
-    } else if (w.rng.chance(0.4)) return endWar(w, war, 'd', war.score > 5 && A.occupiedByEnemy === 0 ? 'ceasefire' : 'white');
+      if (fac.provinceCount <= 1 && w.rng.chance(0.3)) return settle(w, war, 'd', 'collapse');
+      if (war.d.exhaustion > 45 && w.rng.chance(0.1)) return settle(w, war, 'd', 'ceasefire');
+    } else if (w.rng.chance(0.4)) return settle(w, war, 'd', war.score > 5 && A.occupiedByEnemy === 0 ? 'ceasefire' : 'white');
   }
   // losing attacker
   if (war.score < -35 && war.a.exhaustion > 45 && w.rng.chance(0.4)) {
-    if (war.type === 'civil' || war.type === 'independence') { if (w.nations[war.a.leader].provinceCount <= 1) return endWar(w, war, 'd', 'collapse'); return; }
-    return endWar(w, war, 'd', 'white');
+    if (war.type === 'civil' || war.type === 'independence') { if (w.nations[war.a.leader].provinceCount <= 1) return settle(w, war, 'd', 'collapse'); return; }
+    return settle(w, war, 'd', 'white');
   }
   // exhausted defender with significant losses
   if (war.d.exhaustion > 75 && war.score > 30 && war.type !== 'civil' && w.rng.chance(0.3)) {
-    if (war.type !== 'independence' && war.a.goal !== 'regime' && w.rng.chance(0.55)) return endWar(w, war, 'a', 'ceasefire');
-    return endWar(w, war, 'a', war.type === 'independence' ? 'independence' : war.a.goal === 'regime' ? 'puppet' : 'cede_occupied');
+    if (war.type !== 'independence' && war.a.goal !== 'regime' && w.rng.chance(0.55)) return settle(w, war, 'a', 'ceasefire');
+    return settle(w, war, 'a', war.type === 'independence' ? 'independence' : war.a.goal === 'regime' ? 'puppet' : 'cede_occupied');
   }
+  // after a nuclear exchange the world (and both governments) scramble for a halt
+  if ((war.nukeCount ?? 0) >= 2 && w.rng.chance(0.25)) return settle(w, war, war.score >= 0 ? 'a' : 'd', 'ceasefire');
   // phony war: no way to reach each other
-  const fc = CACHE.get(war.id);
-  if (fc && fc.frontline.length === 0 && days > 120 && w.rng.chance(0.25)) return endWar(w, war, 'a', war.score > 5 ? 'ceasefire' : 'white');
-  if (days > 240 && war.a.casualties + war.d.casualties < 2 && war.type !== 'punitive' && w.rng.chance(0.3)) return endWar(w, war, 'a', 'white');
+  const fc = CACHE.get(war);
+  if (fc && fc.frontline.length === 0 && days > 120 && !war.initiatedByUser && w.rng.chance(0.25)) return settle(w, war, 'a', war.score > 5 ? 'ceasefire' : 'white');
+  if (days > 240 && war.a.casualties + war.d.casualties < 2 && war.type !== 'punitive' && w.rng.chance(0.3)) return settle(w, war, 'a', 'white');
   // stalemate
   if (war.stalemateDays > 160 && war.a.exhaustion > 35 && war.d.exhaustion > 30) {
     const pr = 0.03 + (war.a.exhaustion + war.d.exhaustion) / 1500 + (mediator(w, war) >= 0 ? 0.04 : 0);
-    if (w.rng.chance(pr)) return endWar(w, war, 'a', 'ceasefire');
+    if (w.rng.chance(pr)) return settle(w, war, 'a', 'ceasefire');
   }
   // rebels in civil wars that hold territory for years may win independence / recognition
-  if ((war.type === 'independence') && days > 900 && war.score > 10 && w.rng.chance(0.05)) return endWar(w, war, 'a', 'independence');
+  if ((war.type === 'independence') && days > 900 && war.score > 10 && w.rng.chance(0.05)) return settle(w, war, 'a', 'independence');
+}
+
+/** AI peace attempts go through here so a war's options (no treaty / no ceasefire) are honoured. */
+function settle(w: World, war: War, winner: 'a' | 'd', terms: PeaceTerms) {
+  const allowT = war.allowTreaty !== false, allowC = war.allowCeasefire !== false;
+  const negotiated = terms === 'white' || terms === 'cede_targets' || terms === 'cede_occupied';
+  if (terms === 'ceasefire' && !allowC) return;
+  if (negotiated && !allowT) {
+    if (allowC && w.rng.chance(0.5)) endWar(w, war, winner, 'ceasefire');
+    return;
+  }
+  endWar(w, war, winner, terms);
 }
 
 function mediator(w: World, war: War) {
@@ -747,7 +893,8 @@ export function endWar(w: World, war: War, winner: 'a' | 'd', terms: PeaceTerms)
     w.rebuildWarIndex();
     for (const m of allMembers) { const n = w.nations[m]; if (n.atWar.length === 0) n.mil.mobLevel = Math.min(n.mil.mobLevel, 1); }
     war.outcome = 'Ceasefire — frozen conflict';
-    CACHE.delete(war.id);
+    for (const m of allMembers) w.nations[m].ai.lastWarEnd = w.day;
+    CACHE.delete(war);
     return;
   }
   war.status = 'ended';
@@ -860,7 +1007,7 @@ export function endWar(w: World, war: War, winner: 'a' | 'd', terms: PeaceTerms)
     const dur = fmtDuration(w.day - war.start);
     w.pushNews('diplomacy', 5, terms === 'white' ? `${war.name} ends in a negotiated peace` : `${war.name} ends: ${war.outcome}`, `${text} The war lasted ${dur} and cost ${Math.round(war.a.casualties + war.d.casualties).toLocaleString()},000 military casualties.`, [war.a.leader, war.d.leader], ceded[0] ?? undefined, war.id);
   }
-  CACHE.delete(war.id);
+  CACHE.delete(war);
 }
 
 function ceasefireTick(w: World, war: War) {
@@ -868,8 +1015,9 @@ function ceasefireTick(w: World, war: War) {
   const since = w.day - (war.ceasefireDay ?? w.day);
   const A = w.nations[war.a.leader], D = w.nations[war.d.leader];
   if (!A.alive || !D.alive) { war.status = 'ended'; war.end = w.day; return; }
+  if (war.userCeasefire) return; // a ceasefire you imposed holds until you resume the war
   // formalise frozen lines into a treaty after some years
-  if (since > 365 * 2 && w.rng.chance(0.03)) {
+  if (since > 365 * 2 && war.allowTreaty !== false && w.rng.chance(0.03)) {
     war.status = 'active';
     w.rebuildWarIndex();
     endWar(w, war, war.score >= 0 ? 'a' : 'd', war.score > 10 ? 'cede_occupied' : 'white');

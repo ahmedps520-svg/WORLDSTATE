@@ -23,7 +23,7 @@ function reviver(_k: string, v: any) {
   return v;
 }
 
-const FIELDS = ['day', 'seed', 'nations', 'provinces', 'wars', 'orgs', 'treaties', 'rel', 'relBase', 'west', 'sanctions', 'news', 'newsSeq', 'warSeq', 'treatySeq', 'market', 'settings', 'snapshots', 'timeline', 'warStats', 'globalHist'] as const;
+const FIELDS = ['day', 'seed', 'nations', 'provinces', 'wars', 'orgs', 'treaties', 'rel', 'relBase', 'west', 'sanctions', 'news', 'newsSeq', 'warSeq', 'treatySeq', 'market', 'settings', 'snapshots', 'timeline', 'warStats', 'globalHist', 'beachheads', 'nukeSites'] as const;
 
 export function serialize(sim: Sim): string {
   const w = sim.w as unknown as Record<string, unknown>;

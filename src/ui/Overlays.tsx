@@ -105,6 +105,9 @@ export function WarDialog() {
   const dlg = useUI((s) => s.warDialog);
   const [type, setType] = useState<WarType>('invasion');
   const [allies, setAllies] = useState(true);
+  const [treaty, setTreaty] = useState(true);
+  const [cease, setCease] = useState(true);
+  const [nukes, setNukes] = useState(false);
   if (!dlg) return null;
   const sim = app.sim!; const w = sim.w;
   const set = (p: Partial<NonNullable<typeof dlg>>) => store.set({ warDialog: { ...dlg, ...p } });
@@ -113,8 +116,9 @@ export function WarDialog() {
   const t = TYPES.find((x) => x.id === type)!;
   const allyHint = dlg.defenders.flatMap((d) => w.defensePartners(d).map((p) => p.id)).filter((x, i, a) => a.indexOf(x) === i && !dlg.attackers.includes(x) && !dlg.defenders.includes(x));
   const est = dlg.attackers.length === 1 && dlg.defenders.length === 1 ? evaluateTargets(w, w.nations[dlg.attackers[0]], new Set([dlg.defenders[0]]), new Set()).find((p) => p.target === dlg.defenders[0]) : undefined;
+  const noBorder = dlg.attackers.length > 0 && dlg.defenders.length > 0 && !dlg.attackers.some((a) => { const b = w.borderNations(a); return dlg.defenders.some((d) => b.has(d)); });
   const go = () => {
-    const war = sim.startWar(dlg.attackers, dlg.defenders, type, t.goal, allies);
+    const war = sim.startWar(dlg.attackers, dlg.defenders, type, t.goal, allies, { allowTreaty: treaty, allowCeasefire: cease, nukes });
     store.set({ warDialog: null, paused: false });
     if (war) select({ kind: 'war', id: war.id }, true);
   };
@@ -138,7 +142,16 @@ export function WarDialog() {
           </div>
         </div>
         <div className="wb-types">{TYPES.map((x) => <button key={x.id} className={type === x.id ? 'on' : ''} onClick={() => setType(x.id)}><b>{x.label}</b><span>{x.desc}</span></button>)}</div>
-        <label className="check"><input type="checkbox" checked={allies} onChange={(e) => setAllies(e.target.checked)} /> Allies decide whether to honour their treaties</label>
+        <div className="wb-rules">
+          <h5>Rules of this war</h5>
+          <label className="check"><input id="wr-allies" type="checkbox" checked={allies} onChange={(e) => setAllies(e.target.checked)} /> Allies decide whether to honour their treaties</label>
+          <label className="check"><input id="wr-treaty" type="checkbox" checked={treaty} onChange={(e) => setTreaty(e.target.checked)} /> Can end in a peace treaty <span className="muted small">(negotiated cession or return to pre-war borders)</span></label>
+          <label className="check"><input id="wr-cease" type="checkbox" checked={cease} onChange={(e) => setCease(e.target.checked)} /> Can end in a ceasefire <span className="muted small">(front lines frozen)</span></label>
+          <label className="check"><input id="wr-nukes" type="checkbox" checked={nukes} onChange={(e) => setNukes(e.target.checked)} /> Nuclear weapons authorised <span className="muted small">(nuclear-armed sides may strike, and the other side may retaliate)</span></label>
+          {!treaty && !cease && <div className="muted small red">Fight to the finish: this war only ends when one side is conquered or collapses, or when you end it yourself.</div>}
+          {nukes && ![...dlg.attackers, ...dlg.defenders].some((id) => w.nations[id].nukes > 0) && <div className="muted small amber">Neither side currently has nuclear weapons.</div>}
+        </div>
+        {noBorder && <div className="warn-box">These countries share no land border. Forces will make amphibious landings, or airborne drops into landlocked countries, to seize a foothold and push inland. Naval and air strength decide whether landings succeed.</div>}
         {allyHint.length > 0 && allies && <div className="warn-box">Treaty partners that may intervene: <span className="chip-row">{allyHint.slice(0, 14).map((id) => <NationChip key={id} n={w.nations[id]} />)}</span></div>}
         {est && <div className="muted small">Intelligence assessment: effective strength ratio {est.ratio.toFixed(2)} : 1 once allies are counted{est.ratio < 1 ? ' — a risky gamble.' : '.'}</div>}
         <footer><button className="btn" onClick={() => store.set({ warDialog: null })}>Cancel</button><button className="btn danger" disabled={!dlg.attackers.length || !dlg.defenders.length} onClick={go}>Declare war</button></footer>
@@ -205,8 +218,9 @@ export function useHotkeys() {
   useEffect(() => {
     const h = (e: KeyboardEvent) => {
       const tag = (e.target as HTMLElement).tagName;
-      if (tag === 'INPUT' || tag === 'SELECT' || tag === 'TEXTAREA') return;
       const s = store.get();
+      if (e.key === 'Escape') { store.set({ selection: s.warDialog || s.search ? s.selection : null, tool: null, warDialog: null, search: false }); return; }
+      if (tag === 'INPUT' || tag === 'SELECT' || tag === 'TEXTAREA') return;
       if (e.code === 'Space') { e.preventDefault(); store.set({ paused: !s.paused }); }
       else if (e.key === '+' || e.key === '=') store.set({ speed: Math.min(7, s.speed + 1) });
       else if (e.key === '-') store.set({ speed: Math.max(0, s.speed - 1) });
